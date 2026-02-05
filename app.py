@@ -494,7 +494,7 @@ with tab_list:
 
     rl = reading_list_df()
     if rl.empty:
-        st.info("Your reading list is empty. Add papers from Shop/Swipe.")
+        st.info("Your reading list is empty. Add papers from the Search tab.")
     else:
         for _, row in rl.iterrows():
             pid = row["paper_id"]

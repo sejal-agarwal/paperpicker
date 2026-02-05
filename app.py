@@ -199,6 +199,10 @@ def confirm_mode_dialog():
 if st.session_state.confirm_mode_switch:
     confirm_mode_dialog()
 
+with header_left:
+    st.title("📄 PaperPicker")
+    st.caption("Search → Browse (Shop/Swipe) → Read")
+
 # -----------------------------
 # Tabs
 # -----------------------------

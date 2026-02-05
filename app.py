@@ -201,7 +201,7 @@ if st.session_state.confirm_mode_switch:
 
 with header_left:
     st.title("📄 PaperPicker")
-    st.caption("Search → Browse (Shop/Swipe) → Read")
+    st.caption("Search → Browse → Read")
 
 # -----------------------------
 # Tabs

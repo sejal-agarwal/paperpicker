@@ -94,6 +94,12 @@ def semantic_scholar_search(
 def init_state():
     if "mode" not in st.session_state:
         st.session_state.mode = "Shop"  # Shop vs Swipe
+    
+    if "pending_mode" not in st.session_state:
+        st.session_state.pending_mode = st.session_state.mode  # mirrors the selectbox
+
+    if "confirm_mode_switch" not in st.session_state:
+        st.session_state.confirm_mode_switch = False
 
     if "reading_list" not in st.session_state:
         st.session_state.reading_list = []  # list of paper_id
@@ -148,54 +154,50 @@ def reading_list_df():
     return df[df["paper_id"].isin(st.session_state.reading_list)].copy()
 
 # -----------------------------
-# CSS: colored swipe buttons (works reliably by styling parent container)
-# -----------------------------
-def inject_swipe_button_css():
-    st.markdown(
-        """
-<style>
-/* We wrap our swipe buttons in these containers */
-.swipe-btn-read button {
-  border-radius: 12px !important;
-  padding: 0.6rem 0.95rem !important;
-  border: 2px solid #1f77b4 !important;
-}
-.swipe-btn-skip button {
-  border-radius: 12px !important;
-  padding: 0.6rem 0.95rem !important;
-  border: 2px solid #d62728 !important;
-}
-
-.swipe-btn-read.active button {
-  background: #1f77b4 !important;
-  color: #fff !important;
-}
-.swipe-btn-skip.active button {
-  background: #d62728 !important;
-  color: #fff !important;
-}
-</style>
-        """,
-        unsafe_allow_html=True
-    )
-
-inject_swipe_button_css()
-
-# -----------------------------
 # Header (toggle in top-right)
 # -----------------------------
 header_left, header_right = st.columns([3, 1])
-with header_left:
-    st.title("📄 PaperPicker")
-    st.caption("Search → Browse (Shop/Swipe) → Read")
+def _reset_for_mode_switch():
+    st.session_state.reading_list = []
+    st.session_state.swipe_decisions = {}
+    st.session_state.swipe_index = 0
+    st.session_state.page = 0
+
+def on_mode_select_change():
+    if st.session_state.pending_mode != st.session_state.mode:
+        st.session_state.confirm_mode_switch = True
 
 with header_right:
-    st.session_state.mode = st.selectbox(
+    st.selectbox(
         "Mode",
         ["Shop", "Swipe"],
-        index=0 if st.session_state.mode == "Shop" else 1
+        key="pending_mode",
+        on_change=on_mode_select_change,
     )
     st.metric("Reading List", len(st.session_state.reading_list))
+
+@st.dialog("Confirm mode switch")
+def confirm_mode_dialog():
+    new_mode = st.session_state.pending_mode
+    st.write(f'You are switching to **{new_mode}** mode. Your reading list will clear.')
+    c1, c2 = st.columns(2)
+
+    with c1:
+        if st.button("✅ Yes, switch", use_container_width=True):
+            st.session_state.mode = new_mode
+            _reset_for_mode_switch()
+            st.session_state.confirm_mode_switch = False
+            st.rerun()
+
+    with c2:
+        if st.button("❌ No, keep current", use_container_width=True):
+            # revert the dropdown selection back to the current mode
+            st.session_state.pending_mode = st.session_state.mode
+            st.session_state.confirm_mode_switch = False
+            st.rerun()
+
+if st.session_state.confirm_mode_switch:
+    confirm_mode_dialog()
 
 # -----------------------------
 # Tabs
@@ -248,7 +250,7 @@ def render_paper_card(row, in_shop_context: bool, widget_key_prefix: str, show_a
         return
 
     if in_shop_context:
-        label = "✅ In reading list (click to remove)" if in_list else "➕ Add to reading list"
+        label = "🗑️ Remove from reading list" if in_list else "➕ Add to reading list"
         if st.button(label, key=f"{widget_key_prefix}_toggle_{paper_id}"):
             toggle_reading_list(paper_id)
             st.rerun()

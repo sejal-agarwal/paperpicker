@@ -186,7 +186,7 @@ inject_swipe_button_css()
 # -----------------------------
 header_left, header_right = st.columns([3, 1])
 with header_left:
-    st.title("📚 Literature Funnel Prototype")
+    st.title("📄 PaperPicker")
     st.caption("Search → Browse (Shop/Swipe) → Read")
 
 with header_right:

@@ -3,11 +3,6 @@ import pandas as pd
 import requests
 import time
 from typing import Optional
-import os
-import uuid
-import logging
-from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
 
 # -----------------------------
 # App config
@@ -19,22 +14,6 @@ st.set_page_config(
 )
 
 S2_BASE = "https://api.semanticscholar.org/graph/v1"
-
-# -----------------------------
-# Time logging
-# -----------------------------
-
-LOG_DIR = os.path.join(os.path.dirname(__file__), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-LOG_PATH = os.path.join(LOG_DIR, "mode_usage.log")
-
-logger = logging.getLogger("paperpicker")
-if not logger.handlers:
-    logger.setLevel(logging.INFO)
-    fh = logging.FileHandler(LOG_PATH)
-    fmt = logging.Formatter("%(asctime)s %(message)s")
-    fh.setFormatter(fmt)
-    logger.addHandler(fh)
 
 # -----------------------------
 # Semantic Scholar search (with 429 backoff)
@@ -151,60 +130,9 @@ def init_state():
     # Cache for AI summaries: paper_id -> summary text
     if "ai_summaries" not in st.session_state:
         st.session_state.ai_summaries = {}  # paper_id -> summary text
-    
-    if "session_id" not in st.session_state:
-        st.session_state.session_id = str(uuid.uuid4())[:8]
-
-    if "mode_start_ts" not in st.session_state:
-        st.session_state.mode_start_ts = time.time()
-
-    if "mode_durations" not in st.session_state:
-        st.session_state.mode_durations = {"Shop": 0.0, "Swipe": 0.0}
-    
-    if "timing_on" not in st.session_state:
-        st.session_state.timing_on = False
-
-    if "timing_last_ts" not in st.session_state:
-        st.session_state.timing_last_ts = None  # last timestamp when timing started/resumed
-    
-    if "active_tab" not in st.session_state:
-        st.session_state.active_tab = "Search"
-
-
-
 
 
 init_state()
-
-
-def get_display_durations():
-    shop = st.session_state.mode_durations.get("Shop", 0.0)
-    swipe = st.session_state.mode_durations.get("Swipe", 0.0)
-
-    # If stopwatch running, add the currently accumulating time for display
-    if st.session_state.get("timing_on") and st.session_state.get("timing_last_ts"):
-        now = time.time()
-        live = max(0.0, now - st.session_state.timing_last_ts)
-        if st.session_state.mode == "Shop":
-            shop += live
-        elif st.session_state.mode == "Swipe":
-            swipe += live
-
-    return shop, swipe
-
-def start_timing():
-    if not st.session_state.timing_on:
-        st.session_state.timing_on = True
-        st.session_state.timing_last_ts = time.time()
-        logger.info(f"session={st.session_state.session_id} reason=start_timing mode={st.session_state.mode}")
-
-def stop_timing():
-    if st.session_state.timing_on:
-        _commit_mode_time(reason="stop_timing")  # flush current mode time up to now
-        st.session_state.timing_on = False
-        st.session_state.timing_last_ts = None
-        logger.info(f"session={st.session_state.session_id} reason=stopped mode={st.session_state.mode}")
-
 
 def add_to_reading_list(paper_id: str):
     if paper_id and paper_id not in st.session_state.reading_list:
@@ -230,21 +158,10 @@ def reading_list_df():
 # -----------------------------
 header_left, header_right = st.columns([3, 1])
 def _reset_for_mode_switch():
-    # existing resets
     st.session_state.reading_list = []
     st.session_state.swipe_decisions = {}
     st.session_state.swipe_index = 0
     st.session_state.page = 0
-
-    # go back to "enter a search term" screen
-    st.session_state.step = "query"
-    st.session_state.user_query = ""
-    st.session_state.final_query = ""
-    st.session_state.papers = pd.DataFrame()
-
-    # jump to Search tab
-    st.session_state.active_tab = "Search"
-
 
 def on_mode_select_change():
     if st.session_state.pending_mode != st.session_state.mode:
@@ -259,22 +176,6 @@ with header_right:
     )
     st.metric("Reading List", len(st.session_state.reading_list))
 
-    # Live tick while stopwatch is running
-    if st.session_state.get("timing_on"):
-        st_autorefresh(interval=1000, key="mode_timer_tick")
-
-
-    shop_s, swipe_s = get_display_durations()
-    status = "🟢 timing" if st.session_state.timing_on else "⚪️ paused"
-    st.caption(f"{status}  |  ⏱ Shop: {shop_s:.0f}s • Swipe: {swipe_s:.0f}s")
-
-    b1, b2, b3 = st.columns([1, 1, 1])
-    with b1:
-        st.button("▶️ Start", on_click=start_timing, disabled=st.session_state.timing_on, use_container_width=True)
-    with b2:
-        st.button("⏸ Stop", on_click=stop_timing, disabled=not st.session_state.timing_on, use_container_width=True)
-
-
 @st.dialog("Confirm mode switch")
 def confirm_mode_dialog():
     new_mode = st.session_state.pending_mode
@@ -283,14 +184,10 @@ def confirm_mode_dialog():
 
     with c1:
         if st.button("✅ Yes, switch", use_container_width=True):
-            _commit_mode_time(reason=f"switch_to_{new_mode}")
-
             st.session_state.mode = new_mode
             _reset_for_mode_switch()
             st.session_state.confirm_mode_switch = False
             st.rerun()
-
-
 
     with c2:
         if st.button("❌ No, keep current", use_container_width=True):
@@ -309,9 +206,7 @@ with header_left:
 # -----------------------------
 # Tabs
 # -----------------------------
-tabs = ["Search", "Reading List"]
-tab_index = tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0
-tab_search, tab_list = st.tabs(tabs, default=tab_index)
+tab_search, tab_list = st.tabs(["Search", "Reading List"])
 
 # -----------------------------
 # Shared: Paper card renderer
@@ -627,25 +522,3 @@ with tab_list:
             file_name="reading_list.csv",
             mime="text/csv",
         )
-
-def _commit_mode_time(reason: str):
-    """
-    If timing is ON, add elapsed time since timing_last_ts into the current mode bucket.
-    Always logs when called (elapsed may be 0 if timing is off).
-    """
-    now = time.time()
-    mode = st.session_state.get("mode", "unknown")
-
-    elapsed = 0.0
-    if st.session_state.get("timing_on") and st.session_state.get("timing_last_ts"):
-        elapsed = max(0.0, now - st.session_state.timing_last_ts)
-        st.session_state.mode_durations[mode] = st.session_state.mode_durations.get(mode, 0.0) + elapsed
-        st.session_state.timing_last_ts = now  # reset baseline
-
-    logger.info(
-        f"session={st.session_state.session_id} "
-        f"mode={mode} elapsed_sec={elapsed:.2f} "
-        f"total_shop_sec={st.session_state.mode_durations.get('Shop', 0.0):.2f} "
-        f"total_swipe_sec={st.session_state.mode_durations.get('Swipe', 0.0):.2f} "
-        f"reason={reason} timing_on={st.session_state.get('timing_on')}"
-    )
